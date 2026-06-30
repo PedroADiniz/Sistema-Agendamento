@@ -45,9 +45,8 @@ async function submit() {
     <div class="card login-card">
       <div class="login-card__brand">
         <span class="login-card__logo">A</span>
-        <span>Agendamentos</span>
+        <span>AgendaFlow</span>
       </div>
-      <h1 class="login-card__title">Bem-vindo de volta</h1>
       <p class="muted login-card__subtitle">Entre com suas credenciais para continuar.</p>
 
       <form @submit.prevent="submit">
