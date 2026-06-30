@@ -14,13 +14,13 @@ const usersStore = useUsersStore()
 const toast = useToastStore()
 
 // filtros da busca: atendente + data
-const filters = reactive({
-  attendant_id: '',
-  date: '',
-})
+const filters = reactive({ attendant_id: '', date: '' })
 
-// vira true depois da primeira busca (para mostrar a tabela)
+// vira true depois da primeira busca
 const searched = ref(false)
+
+// quando true, busca todos os slots (livres + ocupados)
+const showAll = ref(false)
 
 // lista de atendentes para o select
 const attendants = computed(() =>
@@ -29,25 +29,45 @@ const attendants = computed(() =>
     .map((u) => ({ value: u.id, label: u.name || u.email }))
 )
 
-// colunas da tabela de horários
-const columns = [
+// colunas da tabela (muda conforme o modo)
+const columnsAvailable = [
   { key: 'start', label: 'Início' },
   { key: 'end', label: 'Fim' },
+]
+const columnsAll = [
+  { key: 'start', label: 'Início' },
+  { key: 'end', label: 'Fim' },
+  { key: 'client_name', label: 'Cliente' },
 ]
 
 // ao abrir a tela, carrega os atendentes
 onMounted(() => usersStore.fetch())
 
-// busca os horários livres
+// executa a busca de acordo com o modo atual
 async function search() {
-  // precisa escolher atendente e data
   if (!filters.attendant_id || !filters.date) {
     toast.error('Selecione o atendente e a data.')
     return
   }
-  await agenda.fetchSlots(Number(filters.attendant_id), filters.date)
+  const id = Number(filters.attendant_id)
+  if (showAll.value) {
+    await agenda.fetchAllSlots(id, filters.date)
+  } else {
+    await agenda.fetchSlots(id, filters.date)
+  }
   searched.value = true
 }
+
+// quando o toggle muda, refaz a busca se já tinha pesquisado
+async function toggleMode() {
+  showAll.value = !showAll.value
+  if (searched.value && filters.attendant_id && filters.date) {
+    await search()
+  }
+}
+
+// linhas da tabela: varia conforme o modo
+const rows = computed(() => showAll.value ? agenda.allSlots : agenda.slots)
 
 // --- parte de agendar um horário ---
 const showBook = ref(false)
@@ -56,7 +76,6 @@ const booking = reactive({ client_name: '', client_email: '' })
 const bookErrors = reactive({ client_name: '', start_time: '' })
 const bookingLoading = ref(false)
 
-// abre o modal de agendamento para um horário
 function openBook(slot) {
   slotToBook.value = slot
   booking.client_name = ''
@@ -66,7 +85,6 @@ function openBook(slot) {
   showBook.value = true
 }
 
-// confirma o agendamento
 async function confirmBook() {
   bookingLoading.value = true
   bookErrors.client_name = ''
@@ -81,10 +99,9 @@ async function confirmBook() {
     })
     toast.success('Agendamento criado com sucesso.')
     showBook.value = false
-    // recarrega os horários: o que foi agendado some da lista
-    await agenda.fetchSlots(Number(filters.attendant_id), filters.date)
+    // recarrega para o slot agendado sair da lista
+    await search()
   } catch (e) {
-    // mostra os erros por campo
     if (e.errors) {
       bookErrors.client_name = e.errors.client_name?.[0] || ''
       bookErrors.start_time = e.errors.start_time?.[0] || ''
@@ -101,7 +118,7 @@ async function confirmBook() {
       <h1>Consulta de horários disponíveis</h1>
     </div>
 
-    <!-- filtros: atendente + data -->
+    <!-- filtros: atendente + data + busca -->
     <div class="filters">
       <FormSelect
         v-model="filters.attendant_id"
@@ -118,17 +135,49 @@ async function confirmBook() {
       </div>
     </div>
 
-    <!-- resultado: horários livres de 60 min -->
+    <!-- toggle: apenas livres ou todos -->
+    <div v-if="searched" class="schedule-toggle">
+      <label class="toggle-switch">
+        <input type="checkbox" :checked="showAll" @change="toggleMode" />
+        <span class="toggle-switch__track"></span>
+        <span class="toggle-switch__label">Mostrar horários ocupados</span>
+      </label>
+    </div>
+
+    <!-- tabela de horários -->
     <BaseTable
       v-if="searched"
-      :columns="columns"
-      :rows="agenda.slots"
+      :columns="showAll ? columnsAll : columnsAvailable"
+      :rows="rows"
       :loading="agenda.loadingSlots"
       empty-text="Nenhum horário disponível para este atendente nesta data."
       has-actions
     >
+      <!-- coluna Cliente: mostra nome (ocupado) ou traço (livre) -->
+      <template #cell-client_name="{ row }">
+        <span v-if="row.status === 'booked'" class="client-info">
+          <span class="badge badge--booked">Ocupado</span>
+          {{ row.client_name }}
+        </span>
+        <span v-else class="muted">—</span>
+      </template>
+
+      <!-- ações: "Agendar" só para livres; ocupados mostram traço -->
       <template #actions="{ row }">
-        <BaseButton variant="ghost" small @click="openBook(row)">Agendar</BaseButton>
+        <template v-if="row.status === 'booked' || !showAll">
+          <BaseButton
+            v-if="!showAll || row.status === 'available'"
+            variant="ghost"
+            small
+            @click="openBook(row)"
+          >
+            Agendar
+          </BaseButton>
+          <span v-else class="muted" style="padding: 0 8px;">—</span>
+        </template>
+        <template v-else>
+          <BaseButton variant="ghost" small @click="openBook(row)">Agendar</BaseButton>
+        </template>
       </template>
     </BaseTable>
 
@@ -149,8 +198,10 @@ async function confirmBook() {
           v-model="booking.client_email"
           label="E-mail do cliente"
           type="email"
-          :error="bookErrors.start_time"
         />
+        <p v-if="bookErrors.start_time" class="field__error" style="margin-top: -8px; margin-bottom: 12px;">
+          {{ bookErrors.start_time }}
+        </p>
         <div class="form-actions">
           <BaseButton variant="ghost" type="button" @click="showBook = false">Cancelar</BaseButton>
           <BaseButton type="submit" :disabled="bookingLoading">
@@ -163,7 +214,6 @@ async function confirmBook() {
 </template>
 
 <style scoped>
-/* deixa os filtros lado a lado */
 .filters {
   display: flex;
   gap: 1rem;
@@ -177,5 +227,59 @@ async function confirmBook() {
 }
 .filters__action {
   padding-bottom: 2px;
+}
+
+/* toggle "mostrar ocupados" */
+.schedule-toggle {
+  margin-bottom: 16px;
+}
+.toggle-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-switch input {
+  display: none;
+}
+.toggle-switch__track {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: #d1d5db;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.toggle-switch__track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-switch input:checked + .toggle-switch__track {
+  background: var(--accent);
+}
+.toggle-switch input:checked + .toggle-switch__track::after {
+  transform: translateX(16px);
+}
+.toggle-switch__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+/* info do cliente na célula */
+.client-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

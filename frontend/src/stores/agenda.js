@@ -7,7 +7,8 @@ export const useAgendaStore = defineStore('agenda', {
   // estado: listas e controles de "carregando"
   state: () => ({
     availabilities: [],
-    slots: [],
+    slots: [],       // apenas horários livres
+    allSlots: [],    // livres + ocupados (com dados do cliente)
     loadingAvailabilities: false,
     loadingSlots: false,
   }),
@@ -48,6 +49,17 @@ export const useAgendaStore = defineStore('agenda', {
         const data = await scheduleService.available(attendantId, date)
         this.slots = data.slots
         return data
+      } finally {
+        this.loadingSlots = false
+      }
+    },
+
+    // busca todos os slots do dia (livres + ocupados com nome do cliente)
+    async fetchAllSlots(attendantId, date) {
+      this.loadingSlots = true
+      try {
+        const data = await scheduleService.day(attendantId, date)
+        this.allSlots = data.slots
       } finally {
         this.loadingSlots = false
       }

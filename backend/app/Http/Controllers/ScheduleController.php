@@ -37,6 +37,24 @@ class ScheduleController extends Controller
         ], 'Horários disponíveis listados com sucesso.');
     }
 
+    // GET /api/schedule/day → todos os slots do dia: livres e ocupados (com nome do cliente)
+    public function day(AvailableSlotsRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        $slots = $this->schedule->allSlots(
+            (int) $data['attendant_id'],
+            $data['date']
+        );
+
+        return ApiResponse::success([
+            'attendant_id' => (int) $data['attendant_id'],
+            'date'         => $data['date'],
+            'slot_minutes' => ScheduleService::SLOT_MINUTES,
+            'slots'        => $slots,
+        ], 'Horários do dia listados com sucesso.');
+    }
+
     // POST /api/appointments -> cria um agendamento ocupando um horário livre
     public function store(StoreAppointmentRequest $request): JsonResponse
     {

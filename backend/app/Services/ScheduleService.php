@@ -71,6 +71,51 @@ class ScheduleService
         return array_values($slots);
     }
 
+    // devolve todos os slots do dia (livres e ocupados) com dados do cliente nos ocupados
+    public function allSlots(int $attendantId, string $date): array
+    {
+        $day     = Carbon::createFromFormat('Y-m-d', $date)->startOfDay();
+        $weekday = $day->dayOfWeek;
+
+        $windows = $this->availabilities->activeForUserAndWeekday($attendantId, $weekday);
+
+        if ($windows->isEmpty()) {
+            return [];
+        }
+
+        // indexa os agendamentos pela hora de início para busca rápida
+        $booked = $this->appointments
+            ->scheduledForUserAndDate($attendantId, $date)
+            ->keyBy(fn ($a) => $this->normalizeTime($a->start_time));
+
+        $slots = [];
+
+        foreach ($windows as $window) {
+            $cursor = $this->timeOn($day, $window->start_time);
+            $end    = $this->timeOn($day, $window->end_time);
+
+            while ($cursor->copy()->addMinutes(self::SLOT_MINUTES)->lte($end)) {
+                $slotStart   = $cursor->format('H:i');
+                $slotEnd     = $cursor->copy()->addMinutes(self::SLOT_MINUTES)->format('H:i');
+                $appointment = $booked->get($slotStart);
+
+                // slot livre ou ocupado, sempre retorna com status e dados do cliente
+                $slots[$slotStart] = [
+                    'start'        => $slotStart,
+                    'end'          => $slotEnd,
+                    'status'       => $appointment ? 'booked' : 'available',
+                    'client_name'  => $appointment?->client_name,
+                    'client_email' => $appointment?->client_email,
+                ];
+
+                $cursor->addMinutes(self::SLOT_MINUTES);
+            }
+        }
+
+        ksort($slots);
+        return array_values($slots);
+    }
+
     // cria um agendamento, conferindo antes se o horário está mesmo livre
     public function book(array $data): Appointment
     {

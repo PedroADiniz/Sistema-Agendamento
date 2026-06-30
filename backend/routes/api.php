@@ -40,5 +40,6 @@ Route::middleware('auth:api')->group(function () {
 
     // consulta de horários livres e criação de agendamento
     Route::get('/schedule/available', [ScheduleController::class, 'available']);
+    Route::get('/schedule/day', [ScheduleController::class, 'day']);
     Route::post('/appointments', [ScheduleController::class, 'store']);
 });
