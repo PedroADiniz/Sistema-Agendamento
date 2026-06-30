@@ -19,11 +19,26 @@ Instale antes de começar:
 
 ## Instalação
 
+### Opção A — via Git
+
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/SEU_USUARIO/sistema-agendamentos.git
-cd sistema-agendamentos
+git clone https://github.com/PedroADiniz/Sistema-Agendamento.git
+cd Sistema-Agendamento
+```
 
+### Opção B — via arquivo ZIP
+
+```
+1. Extraia o ZIP em uma pasta de sua escolha
+2. Abra o terminal dentro da pasta extraída
+```
+
+---
+
+A partir daqui os passos são iguais para as duas opções:
+
+```bash
 # 2. Crie o arquivo de ambiente do backend
 cp backend/.env.example backend/.env
 
@@ -31,7 +46,9 @@ cp backend/.env.example backend/.env
 docker compose up -d
 ```
 
-> Na primeira execução aguarde cerca de **2 minutos** — o Composer e o npm precisam baixar as dependências. O `APP_KEY` e o `JWT_SECRET` são gerados automaticamente.
+> Na primeira execução aguarde cerca de **2 minutos** — o Docker instala as dependências PHP (`composer install`) e JS (`npm install`) automaticamente. O `APP_KEY` e o `JWT_SECRET` são gerados automaticamente.
+> 
+> **`vendor/` e `node_modules/` não estão incluídos** — são instalados pelo Docker na primeira execução.
 
 ```bash
 # 4. Crie as tabelas e popule o banco
