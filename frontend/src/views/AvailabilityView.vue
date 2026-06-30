@@ -3,23 +3,17 @@ import { ref, computed, onMounted } from 'vue'
 import { useAgendaStore } from '@/stores/agenda'
 import { useUsersStore } from '@/stores/users'
 import { useToastStore } from '@/stores/toast'
-import BaseTable from '@/components/BaseTable.vue'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import AvailabilityFormModal from '@/components/AvailabilityFormModal.vue'
+import FormSelect from '@/components/FormSelect.vue'
 
 const agenda = useAgendaStore()
 const usersStore = useUsersStore()
 const toast = useToastStore()
 
-// colunas da tabela
-const columns = [
-  { key: 'attendant_name', label: 'Atendente' },
-  { key: 'weekday_label', label: 'Dia' },
-  { key: 'start_time', label: 'Início' },
-  { key: 'end_time', label: 'Fim' },
-  { key: 'active', label: 'Ativo' },
-]
+// filtro por atendente
+const filterAttendant = ref('')
 
 // controle do modal de criar/editar
 const showForm = ref(false)
@@ -30,49 +24,56 @@ const selected = ref(null)
 const showDelete = ref(false)
 const toDelete = ref(null)
 
-// lista de atendentes para o select (só quem é atendente)
+// lista de atendentes para o select do filtro e do formulário
 const attendants = computed(() =>
   usersStore.items
     .filter((u) => u.role === 'atendente')
     .map((u) => ({ value: u.id, label: u.name || u.email }))
 )
 
-// adiciona o nome do atendente em cada linha da tabela
-const rows = computed(() =>
-  agenda.availabilities.map((a) => ({
-    ...a,
-    attendant_name: a.attendant?.name || `#${a.user_id}`,
-  }))
-)
+// agrupa as disponibilidades por atendente, aplicando o filtro selecionado
+const grouped = computed(() => {
+  let items = agenda.availabilities
+  if (filterAttendant.value) {
+    items = items.filter((a) => a.user_id === Number(filterAttendant.value))
+  }
+  const map = {}
+  items.forEach((a) => {
+    if (!map[a.user_id]) {
+      map[a.user_id] = {
+        userId: a.user_id,
+        name: a.attendant?.name || `#${a.user_id}`,
+        items: [],
+      }
+    }
+    map[a.user_id].items.push(a)
+  })
+  return Object.values(map)
+})
 
-// ao abrir a tela, carrega disponibilidades e usuários juntos
+// ao abrir a tela, carrega disponibilidades e usuários ao mesmo tempo
 onMounted(async () => {
   await Promise.all([agenda.fetchAvailabilities(), usersStore.fetch()])
 })
 
-// abre o modal em modo criar
 function openCreate() {
   formMode.value = 'create'
   selected.value = null
   showForm.value = true
 }
-// abre o modal em modo editar
 function openEdit(item) {
   formMode.value = 'edit'
   selected.value = item
   showForm.value = true
 }
-// fecha o modal depois de salvar
 function onSaved() {
   showForm.value = false
 }
 
-// abre a confirmação de exclusão
 function askDelete(item) {
   toDelete.value = item
   showDelete.value = true
 }
-// confirma e exclui a disponibilidade
 async function confirmDelete() {
   try {
     await agenda.removeAvailability(toDelete.value.id)
@@ -91,19 +92,64 @@ async function confirmDelete() {
       <BaseButton @click="openCreate">+ Nova disponibilidade</BaseButton>
     </div>
 
-    <BaseTable :columns="columns" :rows="rows" :loading="agenda.loadingAvailabilities" has-actions>
-      <!-- coluna "Ativo" como etiqueta verde/vermelha -->
-      <template #cell-active="{ row }">
-        <span class="badge" :class="row.active ? 'badge--on' : 'badge--off'">
-          {{ row.active ? 'Sim' : 'Não' }}
-        </span>
-      </template>
-      <!-- botões de ação por linha -->
-      <template #actions="{ row }">
-        <BaseButton variant="ghost" small @click="openEdit(row)">Editar</BaseButton>
-        <BaseButton variant="danger" small @click="askDelete(row)">Excluir</BaseButton>
-      </template>
-    </BaseTable>
+    <!-- filtro por atendente -->
+    <div class="filter-bar">
+      <FormSelect
+        v-model="filterAttendant"
+        :options="attendants"
+        placeholder="Todos os atendentes"
+      />
+    </div>
+
+    <!-- tabela agrupada: cada grupo é um atendente -->
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Dia</th>
+            <th>Início</th>
+            <th>Fim</th>
+            <th>Ativo</th>
+            <th class="table__actions-cell">Ações</th>
+          </tr>
+        </thead>
+
+        <tbody v-if="agenda.loadingAvailabilities">
+          <tr><td colspan="5" class="table__empty">Carregando...</td></tr>
+        </tbody>
+
+        <tbody v-else-if="!grouped.length">
+          <tr><td colspan="5" class="table__empty">Nenhuma disponibilidade cadastrada.</td></tr>
+        </tbody>
+
+        <!-- um bloco <tbody> por atendente -->
+        <template v-else v-for="group in grouped" :key="group.userId">
+          <tbody>
+            <!-- linha de cabeçalho do grupo -->
+            <tr class="table__group-header">
+              <td colspan="5">{{ group.name }}</td>
+            </tr>
+            <!-- linhas de horário do atendente -->
+            <tr v-for="row in group.items" :key="row.id">
+              <td>{{ row.weekday_label }}</td>
+              <td>{{ row.start_time }}</td>
+              <td>{{ row.end_time }}</td>
+              <td>
+                <span class="badge" :class="row.active ? 'badge--on' : 'badge--off'">
+                  {{ row.active ? 'Sim' : 'Não' }}
+                </span>
+              </td>
+              <td class="table__actions-cell">
+                <div class="table__actions">
+                  <BaseButton variant="ghost" small @click="openEdit(row)">Editar</BaseButton>
+                  <BaseButton variant="danger" small @click="askDelete(row)">Excluir</BaseButton>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </template>
+      </table>
+    </div>
 
     <!-- modal de criar/editar disponibilidade -->
     <AvailabilityFormModal
