@@ -1,0 +1,22 @@
+# Arquivos de ambiente
+.env
+
+# Claude Code (configurações locais da IDE)
+.claude/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs e editores
+.idea/
+.vscode/
+.nova/
+.zed/
+*.suo
+*.user
+*.swp
+
+# Configuracoes locais
+.claude/
